@@ -1,0 +1,150 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prideep IDE Full</title>
+<!-- CodeMirror 6 via CDN -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/mode/javascript/javascript.min.js"></script>
+<style>
+  body { margin:0; display:flex; flex-direction:column; height:100vh; font-family:sans-serif; }
+  #toolbar { background:#333; color:#fff; padding:5px; display:flex; gap:5px; }
+  #workspace { flex:1; display:flex; overflow:hidden; }
+  #explorer { width:200px; background:#f4f4f4; padding:10px; overflow:auto; }
+  #explorer div { padding:5px; cursor:pointer; }
+  #explorer .active { background:#ddd; }
+  #editor-container { flex:1; display:flex; flex-direction:column; }
+  #tabs { background:#eee; display:flex; }
+  #tabs div { padding:5px 10px; cursor:pointer; border-right:1px solid #ccc; }
+  #tabs .active { background:#fff; font-weight:bold; }
+  #editor { flex:1; }
+  #output { width:300px; background:#222; color:#0f0; padding:10px; overflow:auto; }
+  button { cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="toolbar">
+  <button onclick="newFile()">New</button>
+  <button onclick="openFile()">Open</button>
+  <button onclick="saveFile()">Save</button>
+  <input type="file" id="fileInput" style="display:none" accept=".pride" onchange="loadFromFile(event)"/>
+  <button onclick="runCode()">Run</button>
+  <button onclick="compileToPython()">Compile</button>
+  <button onclick="clearOutput()">Clear</button>
+</div>
+<div id="workspace">
+  <div id="explorer"></div>
+  <div id="editor-container">
+    <div id="tabs"></div>
+    <div id="editor"></div>
+  </div>
+  <div id="output">Output...</div>
+</div>
+<script>
+let files = { 'main.pride': '// Prideep code here\nshow \"Hello\"\n' };
+let current = 'main.pride';
+function refreshExplorer() {
+  const exp = document.getElementById('explorer');
+  exp.innerHTML='';
+  for(let f in files) {
+    const d = document.createElement('div');
+    d.textContent = f;
+    d.className = f===current?'active':'';
+    d.onclick=()=>switchFile(f);
+    exp.appendChild(d);
+  }
+}
+function refreshTabs() {
+  const tb = document.getElementById('tabs');
+  tb.innerHTML='';
+  for(let f in files) {
+    const d = document.createElement('div');
+    d.textContent = f;
+    d.className = f===current?'active':'';
+    d.onclick=()=>switchFile(f);
+    tb.appendChild(d);
+  }
+}
+function switchFile(f) {
+  saveCurrent();
+  current = f;
+  refreshExplorer(); refreshTabs();
+  editor.setValue(files[current]);
+}
+function saveCurrent(){ files[current]=editor.getValue(); }
+function newFile(){
+  const name=prompt('Filename:','new.pride');
+  if(!name) return;
+  files[name] = '';
+  switchFile(name);
+}
+function openFile(){ document.getElementById('fileInput').click(); }
+function loadFromFile(e){
+  const f = e.target.files[0];
+  const r = new FileReader();
+  r.onload=()=>{
+    files[f.name]=r.result;
+    switchFile(f.name);
+  };
+  r.readAsText(f);
+}
+function saveFile(){
+  saveCurrent();
+  const blob=new Blob([files[current]],{type:'text/plain'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=current;
+  a.click();
+}
+let editor = CodeMirror(document.getElementById('editor'), {
+  value: files[current],
+  mode: 'javascript',
+  lineNumbers: true
+});
+editor.on('change',()=>files[current]=editor.getValue());
+class PrideepInterpreter {
+  constructor(){ this.vars={}; this.out=[]; }
+  run(code){
+    this.vars={}; this.out=[];
+    for(let line of code.split('\n')){
+      line=line.trim();
+      if(line.startsWith('let ')){
+        const [_,rest]=line.split('let '); const [k,v]=rest.split('=');
+        this.vars[k.trim()]= JSON.parse(v) || this.vars[v.trim()] || v.trim().replace(/\"/g,'"');
+      } else if(line.startsWith('show ')){
+        let expr=line.slice(5).trim();
+        let val= expr in this.vars? this.vars[expr] : JSON.parse(expr) || expr.replace(/\"/g,'"');
+        this.out.push(val);
+      }
+    }
+    return this.out;
+  }
+}
+function runCode(){
+  saveCurrent(); document.getElementById('output').innerHTML='';
+  try{
+    const res=new PrideepInterpreter().run(editor.getValue());
+    document.getElementById('output').innerHTML=res.map(r=>'▶ '+r).join('<br>');
+  }catch(e){ document.getElementById('output').innerHTML='Error: '+e.message; }
+}
+function compileToPython(){
+  saveCurrent();
+  let py='# Python code\n';
+  for(let line of editor.getValue().split('\n')){
+    if(line.startsWith('let ')){
+      const [_,rest]=line.split('let '); const [k,v]=rest.split('=');
+      py+=k.trim()+' = '+v.trim()+'\n';
+    } else if(line.startsWith('show ')){
+      py+='print('+line.slice(5).trim()+')\n';
+    }
+  }
+  document.getElementById('output').innerHTML='<pre>'+py+'</pre>';
+}
+function clearOutput(){ document.getElementById('output').innerHTML=''; }
+refreshExplorer(); refreshTabs();
+</script>
+</body>
+</html>
